@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload and Convert</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 100%;
+            max-width: 500px;
+        }
+        h2 {
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+        p {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        input[type="file"] {
+            margin-bottom: 20px;
+        }
+        select {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 80%;
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            width: 80%;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        #output {
+            margin-top: 20px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <form id="uploadForm">
+            <h2>Upload Images or PDF</h2>
+            <input type="file" id="fileInput" multiple accept="image/*,application/pdf" required>
+            <select id="actionSelect" required>
+                <option value="upload_images">Upload Images to PDF</option>
+                <option value="convert_pdf">Convert PDF to Images</option>
+            </select>
+            <button type="submit">Submit</button>
+        </form>
+
+        <div id="output"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const files = document.getElementById('fileInput').files;
+            const action = document.getElementById('actionSelect').value;
+            const outputDiv = document.getElementById('output');
+            outputDiv.innerHTML = ''; // Clear previous output
+
+            if (action === 'upload_images') {
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF();
+                let imgCount = 0; // Counter for images
+
+                Array.from(files).forEach((file, index) => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const img = new Image();
+                        img.src = e.target.result;
+                        img.onload = function() {
+                            pdf.addImage(img, 'JPEG', 10, 10, 190, 190); // Add image to PDF
+                            imgCount++;
+
+                            // Add a new page if it's not the last image
+                            if (imgCount < files.length) {
+                                pdf.addPage();
+                            } else {
+                                const pdfOutput = 'output.pdf';
+                                pdf.save(pdfOutput);
+                                outputDiv.innerHTML = `<h2>PDF Created Successfully!</h2><p>Your PDF is ready. <a href="${pdfOutput}" download>Download PDF</a></p>`;
+                            }
+                        };
+                    };
+                    reader.readAsDataURL(file);
+                });
+            } else if (action === 'convert_pdf') {
+                if (files.length > 0 && files[0].type === 'application/pdf') {
+                    const pdfFile = files[0];
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const pdfData = new Uint8Array(e.target.result);
+                        pdfjsLib.getDocument({ data: pdfData }).promise.then(pdf => {
+                            const numPages = pdf.numPages;
+                            const imageContainer = document.createElement('div');
+                            outputDiv.innerHTML = ''; // Clear previous output
+                            outputDiv.appendChild(imageContainer);
+
+                            const loadImage = (pageNum) => {
+                                pdf.getPage(pageNum).then(page => {
+                                    const scale = 1.5;
+                                    const viewport = page.getViewport({ scale });
+                                    const canvas = document.createElement('canvas');
+                                    const context = canvas.getContext('2d');
+                                    canvas.height = viewport.height;
+                                    canvas.width = viewport.width;
+
+                                    const renderContext = {
+                                        canvasContext: context,
+                                        viewport: viewport
+                                    };
+                                    page.render(renderContext).promise.then(() => {
+                                        const imgSrc = canvas.toDataURL('image/png');
+                                        const img = document.createElement('img');
+                                        img.src = imgSrc;
+                                        imageContainer.appendChild(img);
+
+                                        if (pageNum < numPages) {
+                                            loadImage(pageNum + 1);
+                                        } else {
+                                            outputDiv.innerHTML += `<h2>Images Created Successfully!</h2>`;
+                                        }
+                                    });
+                                });
+                            };
+
+                            loadImage(1); // Start rendering from the first page
+                        });
+                    };
+                    reader.readAsArrayBuffer(pdfFile);
+                } else {
+                    outputDiv.innerHTML = "<p class='error'>Please upload a valid PDF file.</p>";
+                }
+            }
+        });
+    </script>
+</body>
+</html>
